@@ -105,7 +105,7 @@ class TrainingDataBot:
                 for source in sources:
                     source_path=Path(source)
                     if source_path.is_dir():
-                        dir_docs=await self.loader.load.load_directory(source_path)
+                        dir_docs=await self.loader.load_directory(source_path)
                         documents.extend(dir_docs)
                     else:
                         doc=await self.loader.load_single(source)
@@ -201,7 +201,7 @@ class TrainingDataBot:
                                         example.quality_approved=True
                                     else:
                                         example.quality_approved=False
-                                        self.logger.debug(f"Example filtered due to porr quality")
+                                        self.logger.debug(f"Example filtered due to poor quality")
                                 else:
                                     all_examples.append(example)
 
@@ -268,10 +268,157 @@ class TrainingDataBot:
                 self.logger.error(f"Dataset evaluation failed: {e}")
                 raise
     
-    # async def
+    async def export_dataset(
+        self,
+        dataset:Dataset,
+        output_path=Union[str,Path],                 
+        format: ExportFormat=ExportFormat.JSONL,     
+        split_data: bool =True,                      
+        **kwargs
+    ) -> Path :
+        """
+        Export datset to file.
 
+        Args:
+            dataset: Dataset to export
+            output_path: Output file path
+            format: Export format
+            split_data: weather to create train/val/test splits
+            **kwargs: Additional export options
 
+        Returns:
+            Path to export file(s)
+        """
+        with LogContext("dataset_export",dataset_id=str(dataset.id),format=format.value):
+            try:
+                exported_path=await self.exporter.export_dataset(
+                    dataset=dataset,
+                    output_path=Path(output_path),
+                    format=format,
+                    split_data=split_data,
+                    **kwargs
+                )
+            
+                # Update dataset metadata
+                dataset.export_format=format
+                dataset.export_path=exported_path
 
-         
+                self.logger.info(f"Dataset exported to {exported_path}")
+                return exported_path
 
+            except Exception as e:
+                self.logger.error(f"Dataset export failed: {e}")
+                raise
 
+        def get_statistics(self) -> Dict[str,Any]:
+            """Get bot statictics and status."""
+            return{
+                "documents":{
+                    "total":len(self.documents),
+                    "by_type": self._count_by_type(self.documents.values(),"doc_type"),
+                    "total_size":sum(doc.size for doc in self.documents.values()),
+                },
+                "datasets":{
+                    "total":len(self.datasets),
+                    "by_task_type": self._count_examples_by_task_type(),
+                    "total_examples":sum(len(ds.examples) for ds in self.datasets.values())
+                },
+                "jobs":{
+                    "total":len(self.jobs),
+                    "by_status": self._count_by_type(self.jobs.values(),"status"),
+                    "active": len([j for j in self.jobs.values() if j.status ==ProcessingStatus.PROCESSING]),
+                },
+                "quality":{
+                    "approved_examples": sum(
+                        len([ex for ex in ds.examples if ex.quality_approved])
+                        for ds in self.datasets.values()
+                    ),
+                    "total_examples":sum(len(ds.examples) for ds in self.datasets.values()),
+                }
+            }
+
+        def _count_by_type(self,items, attr_name:str) -> Dict[str,int]:
+            """Count items by attribute value."""
+            counts={}
+            for item in items:
+                value=getattr(item, attr_name)
+                if hasattr(value,'value'):  #Handle enums
+                    value=value.value
+                counts[str(value)]=counts.get(str(value),0) +1
+            return counts
+
+        def _count_examples_by_task_type(self) -> Dict[str,int]:
+            """Count examples by task type accross all datasets."""
+            counts={}
+            for dataset in self.datasets.values():
+                for example in dataset.examples:
+                    task_type=example.task_type.value
+                    counts[task_type]=counts.get(task_type,0)+1
+            return counts
+
+        async def cleanup(self):
+            """Cleanup resources and close connections."""
+            try:
+                #Close database connections
+                await self.db_manager.close()
+
+                #Close loader (which will close its WebLoader and Decodo client)
+                if hasattr(self.loader,'close'):
+                    await self.loader.close()
+
+                #Close remaining HTTP clients
+                if hasattr(self.decodo_client,'close'):
+                    await self.decodo_client.close()
+
+                if hasattr(self.ai_client, 'close'):
+                    await self.ai_client.close()
+
+                self.logger.info("Bot cleanup completed")
+
+            except Exception as e:
+                self.logger.error(f"Error during cleanup: {e}")
+
+        async def __aenter__(self):
+            """"async context manager entry."""
+            return self
+        async def __aexit__(self,exc_type,exc_val,exc_tb):
+            """Async context manager exit."""
+            await self.cleanup()
+
+        # Convenience methods
+        async def quick_process(
+            self,
+            source:Union[str,Path],
+            output_path: Union[str,Path],
+            task_types:Optional[List[TaskType]]=None,
+            export_format: ExportFormat=ExportFormat.JSONL
+        ) -> Dataset:
+            """
+            Quick end to end processing
+
+            Args:
+                source: Single source to process
+                output_path: Where to save the dataset
+                task_types:Task types to execute
+                export_format:export format
+
+            Returns:
+                Generated and exported dataset
+            """
+            #Load documents
+            documents=await self.load_document([source])
+
+            #Process documents
+            dataset=await self.process_documents(
+                documents=documents,
+                task_types=task_types
+            )
+
+            #Export dataset
+            await self.export_dataset(
+                dataset=dataset,
+                output_path=output_path,
+                format=export_format
+            )
+
+            return dataset
