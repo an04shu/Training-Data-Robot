@@ -174,7 +174,7 @@ class TaskResult(BaseEntity):
     error_message: Optional[str]=None
 
 #Training Data Models
-class TrainingExampl(BaseEntity):
+class TrainingExample(BaseEntity):
     """A single training example."""
 
     input_text:str

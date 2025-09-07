@@ -25,18 +25,20 @@ from .core.models import(
 )
 
 #import modules
-from .sources import UnifiedLoader
-from .decodo import DecodoClient
-from .ai import AIClient
+from .sources import UnifiedLoader                 # the task worker chooser
+from .decodo import DecodoClient                   #The internet detective
+from .ai import AIClient                           #The AI brain
 from .tasks import TaskManager
 from .preprocessing import TextPreprocessor
 from .evaluation import QualityEvaluator
 from .storage import DatasetExporter, DatabaseManager
 
-class TrainingDataBot:
+class TrainingDataBot:                   # smartest, most organized manager
     """
     Main Training Data Bot class.
+
     this class provides a high-level interface for:
+
     -loading documents from various sources
     -Processing text with task templates
     -Quality assessment and filtering
@@ -67,9 +69,9 @@ class TrainingDataBot:
             self.db_manager=DatabaseManager()
 
             #state(memory boxes)
-            self.documents:Dict[UUID,Document]={}
-            self.datasets:Dict[UUID,Dataset]={}
-            self.jobs:Dict[UUID,ProcessingJob]={}
+            self.documents:Dict[UUID,Document]={}       #Filing cabinet for all homework
+            self.datasets:Dict[UUID,Dataset]={}         #Trophy case for completed projects
+            self.jobs:Dict[UUID,ProcessingJob]={}       #To-do list for all work
 
         except Exception as e:
                 raise ConfigurationError("Failed to initialize bot components", 
@@ -106,10 +108,10 @@ class TrainingDataBot:
                     source_path=Path(source)
                     if source_path.is_dir():
                         dir_docs=await self.loader.load_directory(source_path)
-                        documents.extend(dir_docs)
+                        documents.extend(dir_docs)                      #add to new indexes
                     else:
                         doc=await self.loader.load_single(source)
-                        documents.append(doc)
+                        documents.append(doc)                           #add many to same index
                 for doc in documents:
                     self.documents[doc.id]=doc
 
@@ -422,3 +424,16 @@ class TrainingDataBot:
             )
 
             return dataset
+
+
+    """
+    One-Click Example
+
+    bot = TrainingDataBot()
+    dataset = await bot.quick_process("my_essay.pdf", "
+    training_data.jsonl")
+    Done!
+    
+    """
+
+

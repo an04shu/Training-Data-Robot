@@ -22,13 +22,13 @@ from .sources import(
     PDFLoader,
     WebLoader,
     DocumentLoader,
-    UnifiedLoader,
+    UnifiedLoader,              # Boss who decides which worker to use
 )
 from .tasks import(
     QAGenerator,
     ClassificationGenerator,
     SummarizationGenerator,
-    TaskTemplate,
+    TaskTemplate,              # The instruction sheets for workers
 )
 
 from .decodo import DecodoClient
