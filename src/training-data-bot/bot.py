@@ -4,15 +4,15 @@ Main Training Data Bot class.
 This module contains the core TrainingDataBot class that orchestrates all functionality including document loading, processing, quality assessment, and dataset export.
 """
 
-import asyncio
-from pathlib import Path
-from typing import Dict, List, Optional,Union, Any
-from uuid import UUID
+import asyncio                                                      # do multitask at the same time
+from pathlib import Path                                            # A gps for files
+from typing import Dict, List, Optional,Union, Any                  # To use the right type of info
+from uuid import UUID                                               #unique id
 
-from .core.config import settings
-from .core.logging import get_logger, LogContext
+from .core.config import settings                                             #rule book
+from .core.logging import get_logger, LogContext                              
 from .core.exceptions import TrainingDataBotError, ConfigurationError
-from .core.models import(
+from .core.models import(                     #functions by models.py
     Document,
     Dataset,
     TrainingExample,
@@ -25,7 +25,7 @@ from .core.models import(
 )
 
 #import modules
-from .sources import UnifiedLoader                 # the task worker chooser
+from .sources import UnifiedLoader                 #The task worker choosing managar
 from .decodo import DecodoClient                   #The internet detective
 from .ai import AIClient                           #The AI brain
 from .tasks import TaskManager
@@ -33,16 +33,17 @@ from .preprocessing import TextPreprocessor
 from .evaluation import QualityEvaluator
 from .storage import DatasetExporter, DatabaseManager
 
-class TrainingDataBot:                   # smartest, most organized manager
+class TrainingDataBot:                   # our smartest, most organized manager
     """
     Main Training Data Bot class.
 
-    this class provides a high-level interface for:
+    this class provides a high-level interface for: (4 main jobs)
 
     -loading documents from various sources
     -Processing text with task templates
     -Quality assessment and filtering
     -Dataset creation and export
+
     """
     def __init__(self,config:Optional[Dict[str,Any]]=None):
         """
@@ -82,7 +83,7 @@ class TrainingDataBot:                   # smartest, most organized manager
     async def load_document(
         self,
         sources:Union[str,Path,List[Union[str,Path]]],
-        doc_types:Optional[List[DocumentType]]=None,
+        doc_types:Optional[List[DocumentType]]=None,                #represents type X or none (work of "Optional" here)
         **kwargs
     ) ->List[Document]:
         """
@@ -99,7 +100,7 @@ class TrainingDataBot:                   # smartest, most organized manager
         with LogContext("document_loading",sources=str(sources)):
             try:
                 #Ensure sources is a list
-                if isinstance(sources,(str,Path)):
+                if isinstance(sources,(str,Path)):                   #converting to list so that it must not misinterprate string and read its each char in upcomming iteration
                     sources=[sources]
 
                 #check if any source is a directory
@@ -108,10 +109,10 @@ class TrainingDataBot:                   # smartest, most organized manager
                     source_path=Path(source)
                     if source_path.is_dir():
                         dir_docs=await self.loader.load_directory(source_path)
-                        documents.extend(dir_docs)                      #add to new indexes
+                        documents.extend(dir_docs)                               #add to new indexes
                     else:
                         doc=await self.loader.load_single(source)
-                        documents.append(doc)                           #add many to same index
+                        documents.append(doc)                                    #add many to same index , but why?
                 for doc in documents:
                     self.documents[doc.id]=doc
 
@@ -143,12 +144,12 @@ class TrainingDataBot:                   # smartest, most organized manager
         """
         with LogContext("document_processing"):
             try:
-                #Use all documents if none specified
-                if documents is None:                          
-                    documents=list(self.documents.values())
+                #Use all documents if not specified
+                if documents is None:                            #If the caller didn’t give me any documents, then just use the ones I already have stored in memory 
+                    documents=list(self.documents.values())  
 
                 if not documents:                                 #If still empty
-                   raise TrainingDataBotError("No documents to parse ")
+                   raise TrainingDataBotError("No documents to parse")
                 
                 #Use default task types if none specified
                 if task_types is None:
@@ -156,12 +157,12 @@ class TrainingDataBot:                   # smartest, most organized manager
 
                 #Create processing job
                 job=ProcessingJob(
-                    name=f"Process{len(documents)} documents",
+                    name=f"Process {len(documents)} documents",
                     job_type ="document_processing",
                     total_items=len(documents)*len(task_types),
                     input_data={
                         "document_count":len(documents),
-                        "task_types":[t.value for t in task_types],
+                        "task_types":[t.value for t in task_types],    # convert Enum objects (TaskType.QA_GENERATION) into plain strings ("qa_generation") for logging, JSON, or job metadata.
                         "quality_filter": quality_filter,
                     }
                 )
@@ -173,13 +174,13 @@ class TrainingDataBot:                   # smartest, most organized manager
 
                 for doc in documents:
                     #Process document (chunking,cleaning)
-                    chunks=await self.preprocessor.process_document(doc)
+                    chunks=await self.preprocessor.process_document(doc)            #self.preprocessor is an instance of TextPreprocessor (initialized in _init_components).
 
                     #Process each chunk with each task types
                     for task_type in task_types:
                         for chunk in chunks:
                             try:
-                                result=await self.task_manager.execute_task(
+                                result=await self.task_manager.execute_task(           #???tasks->manager?
                                     task_type=task_type,
                                     input_chunk=chunk,
                                     client=self.ai_client
@@ -217,7 +218,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                 #Create dataset
                 dataset=Dataset(
                     name=f"Generated Dataset {len(self.datasets)+1}",
-                    description=f"Dataset generated from {len(documents)} document",
+                    description=f"Dataset generated from {len(documents)} documents",
                     examples=all_examples,
                 )
 
@@ -325,7 +326,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                     "by_task_type": self._count_examples_by_task_type(),
                     "total_examples":sum(len(ds.examples) for ds in self.datasets.values())
                 },
-                "jobs":{
+                "jobs":{                                                                    #{"processing": 1, "completed": 2, "failed": 0}
                     "total":len(self.jobs),
                     "by_status": self._count_by_type(self.jobs.values(),"status"),
                     "active": len([j for j in self.jobs.values() if j.status ==ProcessingStatus.PROCESSING]),
@@ -339,7 +340,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                 }
             }
 
-        def _count_by_type(self,items, attr_name:str) -> Dict[str,int]:
+        def _count_by_type(self,items, attr_name:str) -> Dict[str,int]:              #keys are strings and values can be anything
             """Count items by attribute value."""
             counts={}
             for item in items:
@@ -347,7 +348,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                 if hasattr(value,'value'):  #Handle enums
                     value=value.value
                 counts[str(value)]=counts.get(str(value),0) +1
-            return counts
+            return counts                                                             #{"pdf": 2, "url": 1}
 
         def _count_examples_by_task_type(self) -> Dict[str,int]:
             """Count examples by task type accross all datasets."""
@@ -356,7 +357,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                 for example in dataset.examples:
                     task_type=example.task_type.value
                     counts[task_type]=counts.get(task_type,0)+1
-            return counts
+            return counts                                                            #{"qa_generation": 300, "classification": 152}
 
         async def cleanup(self):
             """Cleanup resources and close connections."""
@@ -386,6 +387,12 @@ class TrainingDataBot:                   # smartest, most organized manager
         async def __aexit__(self,exc_type,exc_val,exc_tb):
             """Async context manager exit."""
             await self.cleanup()
+
+        """This makes your class usable in an async with block:                                                     ??
+
+        async with TrainingDataBot() as bot:
+            dataset = await bot.quick_process("doc.pdf", "out.jsonl")"""
+
 
         # Convenience methods
         async def quick_process(
@@ -423,7 +430,7 @@ class TrainingDataBot:                   # smartest, most organized manager
                 format=export_format
             )
 
-            return dataset
+            return dataset                                           #if file exported at the output_path given , why are we returning dataset?
 
 
     """
@@ -435,5 +442,3 @@ class TrainingDataBot:                   # smartest, most organized manager
     Done!
     
     """
-
-

@@ -5,15 +5,19 @@ This module defines Pydantic models for all data structures used throughout
 the application, ensuring type safety and validation.
 """
 
-from datetime import datetime                          #stores timestamps like created_at , updated_at
-from enum import Enum                                  #instaed of plain strings ( eg PROCESSING)
+from datetime import datetime , timezone                        #stores timestamps like created_at , updated_at
+from enum import Enum                                  #instaed of plain strings ( eg PROCESSING) , Less risk of typos, easier refactoring
 from pathlib import Path
-from typing import Any, Dict, List,Optional, Union     #Dict,List<Optional,Union,Any
+from typing import Any, Dict, List,Optional, Union     #Dict,List,Optional,Union,Any
 from uuid import UUID,uuid4                            #globally unique ids for objects(documents,jobs,datasets)
 
-from pydantic import BaseModel, Field, validator , root_validator
-#base class for model , ? , validate single field , validate the whole model at once
+from pydantic import BaseModel, Field, validator , root_validator             #validate single field , validate the whole model at once
+#Pydantic is a powerful data validation and settings management library for Python that leverages type hints to validate and serialize data schemas.
+"""Pydantic is like a security guard + organizer for your data.
 
+    It makes sure the data you create or pass into your system is valid.
+    It automatically converts (serializes) things into the right type.
+    It works using Python type hints."""
 
 
 """
@@ -22,10 +26,11 @@ It’s a base template for all the important data objects (Document, Dataset, Jo
 Instead of writing id, created_at, metadata again in every model, you define them once here, then inherit.
 
 """
+
 class BaseEntity(BaseModel):
     """Base class for all entities with common fields."""
     id: UUID =Field(default_factory=uuid4)                             #generates a random UUID for every object(looks like 550e8400-e29b-41d4-a716-446655440000)
-    created_at:datetime=Field(default_factory=datetime.utcnow)
+    created_at:datetime=Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at:Optional[datetime]=None                                 #Starts empty (None) until the first update happend.
     metadata: Dict[str,any]= Field(default_factory=dict)               #Starts empty (None)
 
@@ -33,6 +38,7 @@ class BaseEntity(BaseModel):
         use_enum_values=True                                           #If you use an Enum field, Pydantic will store the actual value (like "pdf") instead of the Enum object (DocumentType.PDF).This makes JSON exports cleaner.
         allow_population_by_field_name=True                            #Lets you create objects using either the field’s Python name or alias
         arbitary_types_allowed=True                                    #Allows fields with types Pydantic doesn’t know natively(like Path)
+
 
 #enums
 class DocumentType(str,Enum):
@@ -52,9 +58,10 @@ class TaskType(str,Enum):
     QA_GENERATION="qageneration"                 #generate q&a
     CLASSIFICATION ="classification"             #sort things into groups 
     SUMMARIZATION="summarization"                #summaries
-    NER="named entity recognition"               #find names and places
-    RED_TEAMING="red_teaming"                    #test for problems
-    INSTRUCTION_RESPONSE="instruction_response"  #follow instructions
+    NER="named entity recognition"               #find names and places?
+    RED_TEAMING="red_teaming"                    #test for problems?
+    INSTRUCTION_RESPONSE="instruction_response"  #follow instructions?
+
 
 class QualityMetric(str,Enum):
     """quality assessment metrics."""
@@ -64,6 +71,7 @@ class QualityMetric(str,Enum):
     COHERENCE="coherence"                   #does it make sense
     RELEVANCE="relevance"                   #is it related to the topics
 
+
 class ProcessingStatus(str,Enum):
     """Processing status values."""
     PENDING="pending"
@@ -72,13 +80,15 @@ class ProcessingStatus(str,Enum):
     FAILED="failed"
     CANCELLED="cancelled"
 
+
 class ExportFormat(str,Enum):
     """Export format options."""
-    JSONL="jsonl"
+    JSONL="jsonl"                  #JSON lines
     CSV="csv"
-    PARQUET="parquet"
+    PARQUET="parquet"              #Apache Parquet is a data file format that supports efficient data storage and retrieval for complex data in bulk
     HUGGINGFACE="huggingface"
     OPENAI="openai"
+
 
 class Document(BaseEntity):
     "Represents a source document."
@@ -89,9 +99,10 @@ class Document(BaseEntity):
     doc_type: DocumentType
     language: Optional[str]="en"
     encoding: Optional[str]="utf-8"
-    size:int=0 #bytes
+    size:int=0                            #bytes
     word_count:int=0
     char_count:int=0
+    scraped_metadata:Optional[Dict]=None       # Extra info from web scraping
 
     #Processing info
     extraction_method: Optional[str]=None
@@ -107,6 +118,7 @@ class Document(BaseEntity):
             return len(values["content"])
         return v
     
+    
 class TextChunk(BaseEntity):
     """Represents a chunk of text from a document."""
     document_id: UUID
@@ -115,6 +127,7 @@ class TextChunk(BaseEntity):
     end_index: int
     chunk_index: int
     token_count: int = 0
+    source_url:Optional[str]=None         # Original URL if from web
 
     #Context preservation
     preceding_context: Optional[str]=None
@@ -130,6 +143,8 @@ class TextChunk(BaseEntity):
             #Rough estimation : 1 token ~4 characters
             return len(values["content"]) //4
         return v
+    
+
 class TaskTemplate(BaseEntity):
     """Represents a task template with prompt and configuration."""
 
@@ -140,6 +155,7 @@ class TaskTemplate(BaseEntity):
 
     #Task_specific configuration
     parameters: Dict[str,any] =Field(default_factory=dict)
+    quality_filters:List[QualityMetric]=[]                 #what to check
 
     #quality requirements
     min_output_length: int=10
@@ -149,6 +165,7 @@ class TaskTemplate(BaseEntity):
     #Performance settings
     timeout: int=60
     max_retries: int=3
+
 
 class TaskResult(BaseEntity):
     """Result of a task execution."""
@@ -170,19 +187,26 @@ class TaskResult(BaseEntity):
     cost:Optional[float]=None
 
     #Status
-    statuc : ProcessingStatus=ProcessingStatus.PENDING
+    status : ProcessingStatus=ProcessingStatus.PENDING
     error_message: Optional[str]=None
+
+    ai_provider:str        #which AI brain did the work
+    cost: float            #how much it cost
+
 
 #Training Data Models
 class TrainingExample(BaseEntity):
     """A single training example."""
 
     input_text:str
-    out_text:str
+    output_text:str
     task_type:TaskType
 
     #Source tracking
     source_document_id: UUID 
+
+    source_url:Optional[str]=None              #Original web source
+
     source_chunk_id: Optional[UUID]
     template_id: Optional[UUID]
 
@@ -190,9 +214,14 @@ class TrainingExample(BaseEntity):
     quality_scores: Dict[QualityMetric,float]=Field(default_factory=dict)
     quality_approved: Optional[bool]=None
     #Additional fields for different formats
-    instruction: Optional[str]=None
-    context: Optional[str]=None
-    catergory: Optional[str]= None
+    instruction: Optional[str]=None             #for instruction-following datasets
+    context: Optional[str]=None                 #for context-based tasks
+    catergory: Optional[str]= None              #for classification tasks
+
+    difficulty_level:str="medium"       # Easy, Medium, Hard
+    tokens_used:int=0                   #how many AI tokens used
+    generation_cost: float=0.0          #how much it cost
+
 
 class Dataset(BaseEntity):
     """A collection of training examples."""
@@ -204,6 +233,11 @@ class Dataset(BaseEntity):
     #context
     examples: List[TrainingExample]=Field(default_factory=list)
 
+    task_types: List[TaskType]=[]            #what kinds of tasks
+    source_urls: List[str]=[]                #all websites we scraped
+    total_cost:float=0.0 
+    export_formats:List[str]=[]              # Available export formats
+    
     #Statistics
     total_examples:int =0
     task_type_counts: Dict[TaskType,int]=Field(default_factory=dict)
@@ -256,6 +290,7 @@ class DecodoResponse(APIResponse):
     cost:Optional[float]=None
     processing_time: Optional[float]=None
 
+
 #Quality Assessment Models
 class QualityReport(BaseEntity):
     """Quality assessment report for a dataset or example."""
@@ -268,7 +303,108 @@ class QualityReport(BaseEntity):
     passed:bool
 
     #Individual metric scores
-    metric_scores: Dict[QualityMetric, float]
+    metric_scores: Dict[QualityMetric, float]=Field(default_factory=dict)
+    metric_details: Dict[QualityMetric, Dict[str,Any]]=Field(default_factory=dict)
+
+    #Issues found
+    issues: List[str]=Field(default_factory=list)
+    warnings: List[str]=Field(default_factory=list)
+
+    #Assessment metadata
+    assessed_at: datetime=Field(default_factory=datetime.utcnow)
+    assessor: str="system"  # or user id
+    assessment_time: float=0.0
+
+
+class ProcessingJob(BaseEntity):
+    """Represents a long-runnning processing job."""
+
+    name:str
+    job_type:str
+    status:ProcessingStatus=ProcessingStatus.PENDING
+
+    #Input/Output
+    input_data: Dict[str,Any]=Field(default_factory=dict)
+    output_data: Dict[str,Any]=Field(default_factory=dict)
+
+    #Progress tracking
+    total_items: int=0
+    processed_items: int=0
+    failed_items: int=0
+
+    #Timing
+    started_at: Optional[datetime]=None
+    completed_at:Optional[datetime]=None
+    estimated_completion: Optional[datetime]=None
+
+    #error handling
+    error_message: Optional[str]=None
+    retry_count: int=0
+    max_retries: int=3
+
+    @property
+    def progress_percentage(self)->float:
+        """calculate progress percentage."""
+        if self.total_items==0:
+            return 0.0
+        return (self.processed_items / self.total_items)
+    
+class ProjectConfig(BaseModel):
+    """Project-level configuration."""
+
+    name:str
+    description:str
+    version:str="1.0.0"
+
+    #Task configuration
+    default_task_types: List[TaskType]=Field(default_factory=list)
+    quality_requirements: Dict[QualityMetric, float]=Field(default_factory=dict)
+
+    #Processing settings
+    batch_size: int=10
+    max_workers: int=4
+    timeout: int=300
+
+    #Export settings
+    default_export_format:ExportFormat=ExportFormat.JSONL
+    output_directory: Path=Path("./outputs")
+
+    #Data source settings
+    supported_formats: List[DocumentType]=Field(default_factory=list)
+
+
+class FileInfo(BaseModel):
+    """Information about a file."""
+
+    path:Path
+    name:str
+    size:int
+    modified_at: datetime
+    file_type: DocumentType
+    encoding : Optional[str]=None
+
+    @validator("name", pre=True , always=True)
+    def extract_name(cls, v , values):
+        if not v and "path" in values:
+            return values["path"].name
+        return v
+    
+
+class ProgressInfo(BaseModel):
+    """progress info for operations."""
+
+    current: int=0
+    total: int=0
+    message: str
+    percentage: float=0.0
+    eta: Optional[datetime]=None
+
+    @validator("percentage", pre=True, always=True)
+    def calculate_percentage(cls, v, values):
+        if values.get("total",0)>0:
+            return (values.get("current",0)/values["total"])
+        return 0.0
+
 
 
 
