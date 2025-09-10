@@ -1,23 +1,32 @@
 import asyncio
 from typing import Union , Optional
-import httpx
+import httpx                                     #async HTTP client
 
 from .base import BaseLoader
-from ..core.models import Document, DocumentType
-from ..core.exceptions import DocumentLoadError
-from ..core.logging import LogContext , get_logger
-from ..decodo import DecodoClient
+from ..core.models import Document, DocumentType          #Pydantic models
+from ..core.exceptions import DocumentLoadError           #custom exception for loader errors.
+from ..core.logging import LogContext , get_logger        #logging utilities.
+from ..decodo import DecodoClient                         #advanced scraper client
 
 class WebLoader(BaseLoader):
     """
-    Loader for web content from urls unding Decodo's professional
+    Loader for web content from urls using Decodo's professional scraping.
 
     Features:
     -professional web scrapping with decodo API
     -Intelligent fallback to basic scraping
     -JavaScript rendering and dynamic content
     -Bypass bot detection and rate limiting
-    -ckean text extraction from any website
+    -clean text extraction from any website
+
+    Has 2 modes:
+        Use DecodoClient for robust scraping.
+        Fallback to basic scraping with httpx.
+
+    Fallback scraping = using a simpler backup method if advanced scraping fails.
+                        Prevents your pipeline from breaking completely.
+                        Works fine for static sites, but may miss data on complex/dynamic ones.
+
     """
 
     def __init__(self, use_decodo: bool =True, **decodo_kwags):
@@ -28,15 +37,15 @@ class WebLoader(BaseLoader):
             use_decodo: Whether to use Decodo for scraping (default: True)
             **decodo_kwargs :Additional arguments for Decodo client
         """
-        super().__init__()
+        super().__init__()                                   #?
         self.supported_formats=[DocumentType.URL]
         self.logger=get_logger("web_loader")
 
         #Initialize Decodo client
         self.use_decodo=use_decodo
-        self.decodo_client:Optional[DecodoClient]=None
+        self.decodo_client:Optional[DecodoClient]=None          #Initially, no client is assigned.
 
-        if self.use_decodo:
+        if self.use_decodo:     #If use_decodo=True, it tries to create a DecodoClient instance.
             try:
                 self.decodo_client=DecodoClient()
                 self.logger.info("WebLoader initialized with Decodo professional")
@@ -45,17 +54,17 @@ class WebLoader(BaseLoader):
                 self.logger.info("WebLoader will use fallback scraping")
                 self.use_decodo=False
 
+
     async def load_single(
             self,
             source:Union[str],
             **kwargs
     )-> Document:
         """
-        Load content from a URL usinh Decodo's professional scraping
+        Load content from a URL using Decodo's professional scraping
 
         Args:
             source:URL to load
-            **kwargs: URL to load
             **kwargs : Additional options:
                 -target: scraping target type(universal, amazon , google etc)
                 -locale: language;locale setting (default:en-us)
@@ -65,19 +74,19 @@ class WebLoader(BaseLoader):
         Returns:
             Loaded decument with professionally extracted content   
         """
-        if not isinstance(source,str) or not source.startswith(('http://','https://')):
+        if not isinstance(source,str) or not source.startswith(('http://','https://')):            #if source is a string and a valid url
             raise DocumentLoadError(f"Invalid URL:{source}")
 
         with LogContext("load_url",url=source , method="decodo" if self.use_decodo else "fallback"):
             try:
                 #Try Decodo professional scraping first
-                if self.use_decodo and self.decodo_client:
-                    content, extraction_method=await self,_fetch_with_decodo(source,**kwargs)
+                if self.use_decodo and self.decodo_client:           #If Decodo is enabled (self.use_decodo=True) and a Decodo client is available → use _fetch_with_decodo.
+                    content, extraction_method=await self._fetch_with_decodo(source,**kwargs)
                 else:
                     content, extraction_method=await self._fetch_with_fallback(source)
                 
                 #Extract title from content or URL
-                title =self._extract_title(source,content)
+                title = self._extract_title(source,content)
 
                 document=self.create_document(
                     title=title,
@@ -86,8 +95,8 @@ class WebLoader(BaseLoader):
                     doc_type=DocumentType.URL,
                     extraction_method=extraction_method
                 )
-                self.logger.info(f"Successfully loaded {len(content)} characters from"):
-                    return document
+                self.logger.info(f"Successfully loaded {len(content)} characters from {source}")
+                return document
             
             except Exception as e:
                 self.logger.error(f"failed to load URL {source}: {e}")
@@ -96,12 +105,14 @@ class WebLoader(BaseLoader):
                     file_path=source,
                     cause=e
                 )
-    async def _fetch_with_decodo(self,ur:str,**kwargs)-> tuple[str,str]:
+            
+
+    async def _fetch_with_decodo(self,url:str,**kwargs)-> tuple[str,str]:
         """
         Fetch content using Decodo's professional scraping service.
         
         Args:
-            url: URL to crape
+            url: URL to scrape
             **kwargs:decodo scraping options
             
         Returns:
@@ -111,7 +122,7 @@ class WebLoader(BaseLoader):
             self.logger.debug(f"Using Decodo professional scraping for {url}")
 
             #Set up Decodo parameters
-            Srape_params={
+            scrape_params={
                 "target":kwargs.get("target","universal"),
                 "locale":kwargs.get("locale","en-us"),
                 "geo":kwargs.get("geo","United States"),
@@ -120,27 +131,24 @@ class WebLoader(BaseLoader):
             }
 
             #call decodo API
-            result=await self.decodo_client.scrape_url(url,**scrape_params)
+            result=await self.decodo_client.scrape_url(url,**scrape_params)           #??
 
             #Extract content from Decodo response
             if isinstance(result,dict):
                 if "content" in result:
                     #clean text content(already processed by Decodo)
                     content=result["content"]
-                    if "content" in result:
-                        #clean text content(already processed by Decodo)
-                        content=result["content"]
-                        if content and len(content.strip())>0:
-                            self.logger.debug(f"Decodo extracted {len(content)}")
-                            return content, "WebLoader.Decodo"
-                        
-                    #if no content field , try to extract from raw HTML
-                    if "html" in result or "data" in result:
-                        html=result.get("html") or result.get("data","")
-                        if html:
-                            content=self._extract_html_text(html)
-                            self.logger.debug(f"Extracted {len(content)} Characters")
-                            return content, "WebLoader.Decodo.HTML"
+                    if content and len(content.strip())>0:                                  #removes whitespace → ensures non-empty.
+                        self.logger.debug(f"Decodo extracted {len(content)} characters")
+                        return content, "WebLoader.Decodo"                                 
+                    
+                #if no content field , try to extract from raw HTML
+                if "html" in result or "data" in result:
+                    html=result.get("html") or result.get("data","")
+                    if html:
+                        content=self._extract_html_text(html)
+                        self.logger.debug(f"Extracted {len(content)} Characters")
+                        return content, "WebLoader.Decodo.HTML"
 
                 #If we get here, Decodo didn't return sable content
                 self.logger.warning(f"Decodo returned unsable content for {url},")
@@ -151,7 +159,7 @@ class WebLoader(BaseLoader):
             self.logger.info("falling back to basic scraping")
             return await self._fetch_with_fallback(url)
         
-    async def _fetch_with_fallback(self,url:str)-> tuple[str,str]:
+    async def _fetch_with_fallback(self,url:str)-> tuple[str,str]:          # ?? as whole
         """
         Fallback method using basic HTTP scraping.
 
@@ -161,17 +169,17 @@ class WebLoader(BaseLoader):
         Returns:
             Tuple of (content , extraction_method)
         """
-        self.logger .debug(f"Using fallback scraping for {url}")
+        self.logger.debug(f"Using fallback scraping for {url}")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response=await client.get(url,header={
+        async with httpx.AsyncClient(timeout=30.0) as client:             #Creates an async HTTP client with 30s timeout. Sends a GET request to the URL.
+            response=await client.get(url,headers={
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac 05 X 10_15_7)'
             })
-            response.raise_for_status()
+            response.raise_for_status()                                   #??
 
-            content_type=response.headers.get('content-type','').lower()
+            content_type=response.headers.get('content-type','').lower()      #Reads HTTP header like:Content-Type: text/html; charset=utf-8 .Converts it to lowercase to make checking easier.
 
-            if 'text.html' in content_type:
+            if 'text/html' in content_type:
                 content=self._extract_html_text(response.text)
                 return content, "WebLoader.Fallback.HTML"
             else:
