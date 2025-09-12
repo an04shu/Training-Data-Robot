@@ -9,10 +9,10 @@ from typing import List , Union , Optional , Dict , Any
 from .base import BaseLoader
 from .documents import DocumentLoader
 from .pdf import PDFLoader
-from.web import WebLoader
+from .web import WebLoader
 from ..core.models import Document, DocumentType
 from ..core.exceptions import DocumentLoadError , UnsupportedFormatError
-from ..core.logging import get_logger, LogContent
+from ..core.logging import LogContext , get_logger
 
 class UnifiedLoader(BaseLoader):
     """
@@ -27,12 +27,12 @@ class UnifiedLoader(BaseLoader):
         self.logger=get_logger("loader.UnifiedLoader")
 
         #initialise sub-loaders(share DecodoClient with WebLoader if provided)
-        self.decument_loader=DocumentLoader()
+        self.document_loader=DocumentLoader()
         self.pdf_loader=PDFLoader()
-        self.web_loader()
+        self.web_loader=WebLoader()
 
         if decodo_client:
-            #Use shared DecodoClient instance for better resource management
+            #Use shared DecodoClient instance for better resource management            ?????
             self.web_loader=WebLoader(use_decodo=True)
             self.web_loader.decodo_client=decodo_client
             self.web_loader.use_decodo=True
@@ -44,7 +44,7 @@ class UnifiedLoader(BaseLoader):
         self.supported_formats=list(DocumentType)
 
     async def load_single(
-            slef,
+            self,
             source:Union[str,Path],
             **kwargs
     )-> Document:
@@ -58,7 +58,7 @@ class UnifiedLoader(BaseLoader):
         Returns:
             Loaded document
         """
-        with LogContext("unified_load_single",source=str()):
+        with LogContext("unified_load_single",source=str(source)):
             try:
                 #Determine source type and select appropriate loader
                 loader=self._select_loader(source)
@@ -71,14 +71,15 @@ class UnifiedLoader(BaseLoader):
                 
                 #Load using selected loader
                 document=await loader.load_single(source, **kwargs)
-                self.logger.debug(f"Sucessfully loaded {source} using {loader.__c}")
+                self.logger.debug(f"Successfully loaded {source} using {loader.__class__.__name__}")
 
                 return document
+            
             except Exception as e:
                 raise DocumentLoadError(
                     f"Failed to load document from {source}",
                     file_path=str(source),
-                    cause=e;
+                    cause=e
                 )
             
     async def load_directory(
@@ -89,7 +90,7 @@ class UnifiedLoader(BaseLoader):
         **kwargs
     )-> List[Document]:
         """
-        Load all supported documents froma directory.
+        Load all supported documents from a directory.
 
         Args:
             directory: Directory path
@@ -143,7 +144,7 @@ def _select_loader(self, sources:Union [str,Path])-> Optional[BaseLoader]:
             return None
         
         #Get file extension
-        suffix=source.suffix.lower().lstrip('.')
+        suffix=source.suffix.lower().lstrip('.')             #Extracts the file extension → "pdf", "txt", "docx", etc.Converts it into a DocumentType enum.If it’s not in the Enum → return None.
 
         try:
             doc_type=DocumentType(suffix)
@@ -157,6 +158,7 @@ def _select_loader(self, sources:Union [str,Path])-> Optional[BaseLoader]:
             return self.document_loader
         else:
             return None
+        
     except Exception as e:
         self.logger.error(f"Error selecting loader for {source}: {e}")
         return None
@@ -173,10 +175,10 @@ def _find_supported_files(
 
     Args:
         directory:directory to search
-        recorsive: whether to search recursively
+        recursive: whether to search recursively
         patterns: Optional glob patterns to match
     
-        Returns:
+    Returns:
         List of file paths
 
     """
@@ -193,15 +195,15 @@ def _find_supported_files(
             if recursive:
                 files.extend(directory.rglob(pattern))
             else:
-                files.extend(directory.rglob(pattern))
+                files.extend(directory.glob(pattern))
     
     except Exception as e:
         self.logger.error(f"Error finding files in {directory}:{e}")
 
     #Filter to only existing files and remove diplicates
-    uniqie_files=list(set(f for f in files if f.is_file()))
+    unique_files=list(set(f for f in files if f.is_file()))
 
-    return sorted(uniqie_files)
+    return sorted(unique_files)
 
 async def close(self):
     """Clenan up resources from all sub-leaders."""

@@ -159,6 +159,7 @@ class WebLoader(BaseLoader):
             self.logger.info("falling back to basic scraping")
             return await self._fetch_with_fallback(url)
         
+
     async def _fetch_with_fallback(self,url:str)-> tuple[str,str]:          # ?? as whole
         """
         Fallback method using basic HTTP scraping.
@@ -185,6 +186,7 @@ class WebLoader(BaseLoader):
             else:
                 return response.text, "WebLoader.Fallback.Text"
     
+
     def _extract_html_text(self, html:str)-> str:
         """
         Extract clean text from HTML content.
@@ -199,36 +201,37 @@ class WebLoader(BaseLoader):
         try:
             from bs4 import BeautifulSoup
 
-            soup =BeautifulSoup(html, 'html.parser')
+            soup =BeautifulSoup(html, 'html.parser')                   #BeautifulSoup parses HTML into a structured tree. we can then navigate and clean unwanted parts easily.
 
             #Remove script and style elements
             for script in soup(["script","style","nav","footer","header"]):
                 script.decompose()
             
-            #Remove common navigation and UI elemets
-            for element in soup.builderfind_all(class_=["nav","navigation","menu","s"]):
+            #Remove common navigation and UI elements
+            for element in soup.find_all(class_=["nav","navigation","menu","s"]):
                 element.decompose()
 
             #Extract text
             text=soup.get_text()
 
-            #Cealn up whitespace and normalize
+            #Clean up whitespace and normalize->Splits by lines.Strips extra whitespace. Rebuilds into a single clean string.
             lines=(line.strip() for line in text.splitlines())
-            chunks=(phrase.strip() for line in lines for phrase in line.split)
+            chunks=(phrase.strip() for line in lines for phrase in line.split())
             text=' '.join(chunk for chunk in chunks if chunk)
 
             ##remove excessive whitespace
             import re
-            text=re.sun(r'/s+','',text).strip()
+            text=re.sub(r'\s+',' ',text).strip()
 
             return text
         except ImportError:
-            self.logger.warning("BeautifulSoup not available,returning raw HTML"):
+            self.logger.warning("BeautifulSoup not available, returning raw HTML")
             return html
         except Exception as e:
-            self.logger.warning(f"HTML sxtraction failed: {e}, returning raw HTML"):
+            self.logger.warning(f"HTML extraction failed: {e}, returning raw HTML")
             return html
         
+
     def _extract_title(self,url:str, content: str)->str:
         """
         Extract title from content or derive from URL.
@@ -266,6 +269,8 @@ class WebLoader(BaseLoader):
            return f"{domain}:{path}"
         else:
             return domain or url
+    
+        #covers all 3 cases , with <title> , without<title> , only domain
 
     async def load_multiple_urls(
             self,
@@ -282,18 +287,24 @@ class WebLoader(BaseLoader):
             **kwargs:
                 List of loaded documents
         """
-        semaphore=asyncio.Semaphore(max_concurrent)
 
-        asyncio def load_with_semaphore(url:str)->Optional:
+        semaphore=asyncio.Semaphore(max_concurrent)
+        """A Semaphore is a lock that allows only a fixed number of tasks to run at the same time.
+        Example: max_concurrent=5 → only 5 requests run in parallel, others wait.
+        Prevents hammering the server with too many requests at once."""
+
+        async def load_with_semaphore(url:str)->Optional[Document]:
             async with semaphore:
                 try:
-                    return await self.load_single(url,*)
+                    return await self.load_single(url,**kwargs)
                 except Exception as e:
-                    self.logger.error(f"Failed to load {}")
+                    self.logger.error(f"Failed to load {url}: {e}")
                     return None
                 
         tasks=[load_with_semaphore(url) for url in urls]
-        results=await asyncio.gather(*tasks, return_exceptions)
+        results=await asyncio.gather(*tasks, return_exceptions=True)
+        # asyncio.gather runs all tasks concurrently.
+        # return_exceptions=True ensures that failures don’t crash everything — errors get returned as Exception objects instead
 
         #Filter out None results and exceptions
         documents=[]
@@ -301,7 +312,7 @@ class WebLoader(BaseLoader):
             if isinstance(result,Document):
                 documents.append(result)
 
-        self.logger.info(f"Successfully loaded {len{documents}}/{len{urls}} ")
+        self.logger.info(f"Successfully loaded {len(documents)}/{len(urls)} ")
         return documents
     
     async def close(self):

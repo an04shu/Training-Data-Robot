@@ -6,22 +6,23 @@ inherit from , ensuring consistent interface and behavior.
 """
 
 import asyncio
-from abc import ABE , abstractmethod
+from abc import ABC , abstractmethod              #(abstract base class) → used to force child classes to implement required methods.
 from pathlib import Path
 from typing import List, Optional, Union , AsyncGenerator , Dict , Any
 
 from ..core.models import Document, DocumentType
 from ..core.exceptions import DocumentLoadError , UnsupportedFormatError
-from ..core.logging import get_logger, LogContent
+from ..core.logging import get_logger, LogContext
 
 class BaseLoader(ABC):
-    """abstract base calss for all document loaders.
+    """abstract base class for all document loaders.
 
     provides common functionality and interface that all loaders must implement.
     """
     def __init__(self):
         self.logger=get_logger(f"loader.{self.__class__.__name__}")
         self.supported_formats: List[DocumentType]=[]
+    
     @abstractmethod
     async def load_single(
         self,
@@ -29,7 +30,7 @@ class BaseLoader(ABC):
         **kwargs
     )-> Document:
         """
-        Load a single socument from source.
+        Load a single document from source.
 
         Args:
             source: Source path, URL, or identifier
@@ -41,6 +42,7 @@ class BaseLoader(ABC):
         Raises
         """   
         pass
+
     async def load_multiple(
         self,
         sources: List[Union[str,Path]],
@@ -58,20 +60,20 @@ class BaseLoader(ABC):
         Returns:
             List of loaded documents
         """
-        with LogContext("load_multiple",source_sount=l):
+        with LogContext("load_multiple",source_sount=len(sources)):
             semaphore=asyncio.Semaphore(max_workers)
 
             async def load_with_semaphore(source):
                 async with semaphore:
                     try:
-                        return wait self.load_single()
+                        return await self.load_single(source, **kwargs)
                     except Exception as e:
-                        self.logger.error(f"Failed to load")
+                        self.logger.error(f"Failed to load {source}: {e}")
                         return None
                     
             #load all sources concurrently
-            tasks=[load_with_semaphore(source) for sources]
-            results=await asyncio.gather(*tasks, return)
+            tasks=[load_with_semaphore(source) for source in sources]
+            results=await asyncio.gather(*tasks, return_exceptions=True)
 
             #filter out failed loads and exceptions
             documents=[]
@@ -79,10 +81,10 @@ class BaseLoader(ABC):
                 if isinstance(result, Document):
                     documents.append(result)
                 elif isinstance(result, Exception):
-                    self.logger.error(f"Error loading")
+                    self.logger.error(f"Error loading {sources[i]}: {result}")
                 #None results (failed loads) are already
 
-            self.logger.info(f"Successfully loaded")
+            self.logger.info(f"Successfully loaded {len(documents)}/{len(sources)}")
             return documents
         
     async def load_stream(
