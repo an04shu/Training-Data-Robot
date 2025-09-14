@@ -1,0 +1,72 @@
+# Core dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+typer[all]>=0.9.0
+rich>=13.0.0
+loguru>=0.7.0
+
+# HTTP and async
+httpx>=0.25.0
+aiohttp>=3.8.0
+requests>=2.31.0
+tenacity>=8.2.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+datasets>=2.14.0
+jsonlines>=4.0.0
+
+# NLP and text processing
+spacy>=3.6.0
+nltk>=3.8.0
+sentence-transformers>=2.2.0
+transformers>=4.30.0
+tokenizers>=0.13.0
+
+# Document processing
+PyMuPDF>=1.23.0
+python-docx>=0.8.11
+pdfminer.six>=20221105
+beautifulsoup4>=4.12.0
+markdownify>=0.11.6
+
+# Web scraping
+selenium>=4.10.0
+playwright>=1.35.0
+
+# Quality checks and evaluation
+detoxify>=0.5.2
+faiss-cpu>=1.7.4
+scikit-learn>=1.3.0
+
+# Configuration and templates
+jinja2>=3.1.0
+hydra-core>=1.3.0
+omegaconf>=2.3.0
+pyyaml>=6.0
+
+# Dashboard and visualization
+streamlit>=1.25.0
+plotly>=5.15.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Database and storage
+sqlalchemy>=2.0.0
+alembic>=1.11.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Code quality
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+mypy>=1.4.0
+
+# Security
+cryptography>=41.0.0 
