@@ -1,3 +1,10 @@
-from client import AIClient
+"""
+AI client module for text generation and LLM services.
 
-__all__=['AIClient']
+Since Decodo is a web scraping service, this module handles
+the actual AI text generation for training data creation.
+"""
+
+from .client import AIClient
+
+__all__ = ["AIClient"]
